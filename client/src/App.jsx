@@ -9,6 +9,7 @@ import People from "./pages/People";
 import DMChat from "./pages/DMChat";
 import DirectRoom from "./pages/DirectRoom";
 import AddFriend from "./pages/AddFriend";
+import UserProfile from "./pages/UserProfile";
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
 <Route path="/dm/:otherUid" element={<DMChat />} />
 <Route path="/with/:otherUid" element={<DirectRoom />} />
 <Route path="/add-friend" element={<AddFriend />} />
+<Route path="/user/:otherUid" element={<UserProfile />} />
     </Routes>
   );
 }

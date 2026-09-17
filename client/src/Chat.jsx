@@ -1,35 +1,55 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "./firebase";
-import socket from "./socket";
+import { db, storage, auth } from "./firebase";
 
 function Chat({ roomCode }) {
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
+  const bottomRef = useRef(null);
+
+  const myId = auth.currentUser ? auth.currentUser.uid : "guest";
 
   useEffect(() => {
-    const handleReceiveMessage = (data) => {
-      setMessages((prev) => [...prev, data]);
-    };
+    if (!roomCode) return;
 
-    socket.on("receive-message", handleReceiveMessage);
+    const q = query(
+      collection(db, "room_chats", roomCode, "messages"),
+      orderBy("createdAt", "asc")
+    );
 
-    return () => {
-      socket.off("receive-message", handleReceiveMessage);
-    };
-  }, []);
-
-  const handleSendMessage = () => {
-    if (messageInput.trim() === "") return;
-    socket.emit("send-message", {
-      roomCode,
-      type: "text",
-      message: messageInput,
-      sender: socket.id,
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setMessages(items);
     });
+
+    return () => unsubscribe();
+  }, [roomCode]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSendMessage = async () => {
+    if (messageInput.trim() === "") return;
+    const textToSend = messageInput;
     setMessageInput("");
+
+    await addDoc(collection(db, "room_chats", roomCode, "messages"), {
+      type: "text",
+      message: textToSend,
+      sender: myId,
+      createdAt: serverTimestamp(),
+    });
   };
 
   const handleFileSelect = async (e) => {
@@ -43,14 +63,16 @@ function Chat({ roomCode }) {
       await uploadBytes(fileRef, file);
       const url = await getDownloadURL(fileRef);
 
-      const isImage = file.type.startsWith("image/");
+      let type = "file";
+      if (file.type.startsWith("image/")) type = "image";
+      else if (file.type.startsWith("video/")) type = "video";
 
-      socket.emit("send-message", {
-        roomCode,
-        type: isImage ? "image" : "file",
+      await addDoc(collection(db, "room_chats", roomCode, "messages"), {
+        type,
         fileUrl: url,
         fileName: file.name,
-        sender: socket.id,
+        sender: myId,
+        createdAt: serverTimestamp(),
       });
     } catch (err) {
       console.error("File upload failed:", err);
@@ -67,10 +89,10 @@ function Chat({ roomCode }) {
             No messages yet. Say hi 👋
           </p>
         )}
-        {messages.map((msg, index) => {
-          const isMe = msg.sender === socket.id;
+        {messages.map((msg) => {
+          const isMe = msg.sender === myId;
           return (
-            <div key={index} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+            <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
               <div
                 className="max-w-[80%] sm:max-w-[70%] px-3 py-2 rounded-2xl text-sm"
                 style={{
@@ -83,6 +105,13 @@ function Chat({ roomCode }) {
                     src={msg.fileUrl}
                     alt={msg.fileName}
                     className="rounded-lg max-w-full max-h-60 object-cover"
+                  />
+                )}
+                {msg.type === "video" && (
+                  <video
+                    src={msg.fileUrl}
+                    controls
+                    className="rounded-lg max-w-full max-h-60"
                   />
                 )}
                 {msg.type === "file" && (
@@ -100,6 +129,7 @@ function Chat({ roomCode }) {
             </div>
           );
         })}
+        <div ref={bottomRef} />
       </div>
 
       <div className="flex gap-2 mt-3 items-center">
@@ -108,7 +138,7 @@ function Chat({ roomCode }) {
           ref={fileInputRef}
           onChange={handleFileSelect}
           className="hidden"
-          accept="image/*,.pdf,.doc,.docx,.txt"
+          accept="image/*,video/*,.pdf,.doc,.docx,.txt"
         />
         <button
           onClick={() => fileInputRef.current.click()}

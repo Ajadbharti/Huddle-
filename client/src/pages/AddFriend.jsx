@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   query,
   where,
   getDocs,
   doc,
-  updateDoc,
+  setDoc,
   arrayUnion,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
@@ -16,8 +15,9 @@ function AddFriend() {
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState("");
   const [result, setResult] = useState(null);
-  const [status, setStatus] = useState(""); // "", "not-found", "added", "self"
+  const [status, setStatus] = useState(""); // "", "not-found", "added", "self", "error"
   const [searching, setSearching] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const handleSearch = async () => {
     const cleanId = searchInput.trim().replace("@", "");
@@ -27,39 +27,54 @@ function AddFriend() {
     setResult(null);
     setStatus("");
 
-    const currentUser = auth.currentUser;
+    try {
+      const currentUser = auth.currentUser;
 
-    const q = query(collection(db, "users"), where("userId", "==", cleanId));
-    const snapshot = await getDocs(q);
+      const q = query(collection(db, "users"), where("userId", "==", cleanId));
+      const snapshot = await getDocs(q);
 
-    if (snapshot.empty) {
-      setStatus("not-found");
-    } else {
-      const foundDoc = snapshot.docs[0];
-      if (foundDoc.id === currentUser.uid) {
-        setStatus("self");
+      if (snapshot.empty) {
+        setStatus("not-found");
       } else {
-        setResult({ uid: foundDoc.id, ...foundDoc.data() });
+        const foundDoc = snapshot.docs[0];
+        if (foundDoc.id === currentUser.uid) {
+          setStatus("self");
+        } else {
+          setResult({ uid: foundDoc.id, ...foundDoc.data() });
+        }
       }
+    } catch (err) {
+      console.error("Search error:", err);
+      setStatus("error");
     }
 
     setSearching(false);
   };
 
   const handleAddFriend = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser || !result) return;
+  const currentUser = auth.currentUser;
+  if (!currentUser || !result) return;
 
-    // Dono taraf se friend list update karo
-    await updateDoc(doc(db, "users", currentUser.uid), {
-      friends: arrayUnion(result.uid),
-    });
-    await updateDoc(doc(db, "users", result.uid), {
-      friends: arrayUnion(currentUser.uid),
-    });
+  setAdding(true);
+  try {
+    await setDoc(
+      doc(db, "users", currentUser.uid),
+      { friends: arrayUnion(result.uid) },
+      { merge: true }
+    );
+    await setDoc(
+      doc(db, "users", result.uid),
+      { friends: arrayUnion(currentUser.uid) },
+      { merge: true }
+    );
 
     setStatus("added");
-  };
+  } catch (err) {
+    console.error("Add friend error:", err);
+    setStatus("error");
+  }
+  setAdding(false);
+};
 
   return (
     <div className="min-h-screen px-6 py-10" style={{ backgroundColor: "#12201F" }}>
@@ -82,7 +97,7 @@ function AddFriend() {
         <div className="flex gap-2 mb-6">
           <input
             type="text"
-            placeholder="e.g. user4821"
+            placeholder="e.g. raju"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -107,6 +122,11 @@ function AddFriend() {
         {status === "self" && (
           <p className="text-sm text-center" style={{ color: "#EF6461" }}>
             That's your own ID 🙂
+          </p>
+        )}
+        {status === "error" && (
+          <p className="text-sm text-center" style={{ color: "#EF6461" }}>
+            Something went wrong. Check the browser console (F12) for details.
           </p>
         )}
         {status === "added" && (
@@ -140,10 +160,11 @@ function AddFriend() {
             </div>
             <button
               onClick={handleAddFriend}
-              className="px-4 py-2 rounded-lg text-sm font-bold"
+              disabled={adding}
+              className="px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50"
               style={{ backgroundColor: "#F2A93B", color: "#12201F" }}
             >
-              Add
+              {adding ? "Adding..." : "Add"}
             </button>
           </div>
         )}

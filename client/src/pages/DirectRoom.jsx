@@ -76,9 +76,13 @@ function DirectRoom() {
             )}
           </div>
           <div>
-            <p className="font-semibold text-sm" style={{ color: "#F5F1E8" }}>
-              {otherUser.name || "Unnamed User"}
-            </p>
+            <p
+  onClick={() => navigate(`/user/${otherUid}`)}
+  className="font-semibold text-sm truncate cursor-pointer hover:underline"
+  style={{ color: "#F5F1E8" }}
+>
+  {otherUser.name || "Unnamed User"}
+</p>
             <p
               className="text-xs cursor-pointer"
               onClick={() => setView("games")}

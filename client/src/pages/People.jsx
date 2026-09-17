@@ -72,7 +72,7 @@ function People() {
           {friends.map((u) => (
             <div
               key={u.uid}
-              onClick={() => navigate(`/with/${u.uid}`)}
+             onClick={() => navigate(`/user/${u.uid}`)}
               className="flex items-center gap-3 rounded-2xl p-3 cursor-pointer border-2 transition hover:-translate-y-0.5"
               style={{ backgroundColor: "#1A2C2A", borderColor: "#3A4E4B" }}
             >

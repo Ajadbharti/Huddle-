@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { signOut } from "firebase/auth";
-import { auth } from "../firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../firebase";
 
 const features = [
   {
@@ -49,6 +51,19 @@ const features = [
 
 function Dashboard() {
   const navigate = useNavigate();
+  const [myUsername, setMyUsername] = useState("");
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          setMyUsername(userDoc.data().userId || "");
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -67,6 +82,11 @@ function Dashboard() {
               Welcome to Huddle
             </h1>
             <p style={{ color: "#9CAEAA" }}>Pick something to do</p>
+            {myUsername && (
+              <p className="text-xs font-mono mt-1" style={{ color: "#F2A93B" }}>
+                Your Huddle ID: @{myUsername}
+              </p>
+            )}
           </div>
           <div className="flex gap-2 flex-wrap">
             <button
@@ -124,4 +144,4 @@ function Dashboard() {
   );
 }
 
-export default Dashboard;   
+export default Dashboard;

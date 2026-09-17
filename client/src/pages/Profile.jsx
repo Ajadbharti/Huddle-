@@ -10,9 +10,26 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  getDocs,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "../firebase";
+
+async function generateUniqueUserId() {
+  let userId;
+  let isUnique = false;
+
+  while (!isUnique) {
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    userId = `user${randomNum}`;
+
+    const q = query(collection(db, "users"), where("userId", "==", userId));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) isUnique = true;
+  }
+
+  return userId;
+}
 
 function Profile() {
   const navigate = useNavigate();
@@ -20,9 +37,9 @@ function Profile() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [profilePic, setProfilePic] = useState("");
+  const [userId, setUserId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [userId, setUserId] = useState("");
 
   const [thoughts, setThoughts] = useState([]);
   const [thoughtInput, setThoughtInput] = useState("");
@@ -35,13 +52,36 @@ function Profile() {
       }
       setUser(currentUser);
 
-      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+
       if (userDoc.exists()) {
         const data = userDoc.data();
         setName(data.name || "");
         setPhone(data.phone || "");
         setProfilePic(data.profilePic || "");
-        setUserId(data.userId || "");
+
+        if (data.userId) {
+          setUserId(data.userId);
+        } else {
+          // Purana/adhoora account: userId missing hai, isse abhi generate karke fix karte hain
+          const newUserId = await generateUniqueUserId();
+          await setDoc(userDocRef, { userId: newUserId, friends: data.friends || [] }, { merge: true });
+          setUserId(newUserId);
+        }
+      } else {
+        // Document hai hi nahi (bahut purana adhoora signup) - poora bana do
+        const newUserId = await generateUniqueUserId();
+        await setDoc(userDocRef, {
+          userId: newUserId,
+          name: "",
+          email: currentUser.email,
+          phone: "",
+          profilePic: "",
+          friends: [],
+          createdAt: new Date().toISOString(),
+        });
+        setUserId(newUserId);
       }
     });
 
@@ -121,22 +161,29 @@ function Profile() {
           ← Back to Dashboard
         </button>
 
-       <div
-  className="rounded-2xl px-4 py-3 border-2 mb-4 flex items-center justify-between"
-  style={{ backgroundColor: "#1A2C2A", borderColor: "#F2A93B" }}
->
-  <div>
-    <p className="text-xs" style={{ color: "#9CAEAA" }}>Your Huddle ID</p>
-    <p className="font-bold font-mono" style={{ color: "#F2A93B" }}>@{userId}</p>
-  </div>
-  <button
-    onClick={() => navigator.clipboard.writeText(userId)}
-    className="text-xs px-3 py-1.5 rounded-lg border-2 font-semibold"
-    style={{ borderColor: "#3A4E4B", color: "#F5F1E8" }}
-  >
-    📋 Copy
-  </button>
-</div>
+        <h1 className="font-display text-2xl font-bold mb-6" style={{ color: "#F5F1E8" }}>
+          Your Profile
+        </h1>
+
+        <div
+          className="rounded-2xl px-4 py-3 border-2 mb-4 flex items-center justify-between"
+          style={{ backgroundColor: "#1A2C2A", borderColor: "#F2A93B" }}
+        >
+          <div>
+            <p className="text-xs" style={{ color: "#9CAEAA" }}>Your Huddle ID</p>
+            <p className="font-bold font-mono" style={{ color: "#F2A93B" }}>
+              {userId ? `@${userId}` : "Loading..."}
+            </p>
+          </div>
+          <button
+            onClick={() => navigator.clipboard.writeText(userId)}
+            disabled={!userId}
+            className="text-xs px-3 py-1.5 rounded-lg border-2 font-semibold disabled:opacity-50"
+            style={{ borderColor: "#3A4E4B", color: "#F5F1E8" }}
+          >
+            📋 Copy
+          </button>
+        </div>
 
         <div
           className="rounded-3xl p-6 border-2"
