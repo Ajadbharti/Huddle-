@@ -8,7 +8,7 @@ import TicTacToe from "../TicTacToe";
 import Snake from "../Snake";
 import Ludo from "../Ludo";
 
-const soloGames = ["snake"];
+const soloGames = ["snake", "tictactoe", "ludo"];
 
 function FeaturePage() {
   const { featureId } = useParams();

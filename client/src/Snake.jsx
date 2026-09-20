@@ -7,6 +7,7 @@ function Snake() {
   const canvasRef = useRef(null);
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
+  const [resetKey, setResetKey] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -16,6 +17,9 @@ function Snake() {
     let direction = { x: 0, y: 0 };
     let food = { x: 5, y: 5 };
     let gameActive = true;
+
+    setGameOver(false);
+    setScore(0);
 
     const handleKeyDown = (e) => {
       if (e.key === "ArrowUp" && direction.y === 0) direction = { x: 0, y: -1 };
@@ -80,7 +84,11 @@ function Snake() {
       clearInterval(interval);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [resetKey]);
+
+  const handlePlayAgain = () => {
+    setResetKey((prev) => prev + 1);
+  };
 
   return (
     <div className="flex flex-col items-center">
@@ -90,11 +98,16 @@ function Snake() {
       <p className="text-sm mb-1" style={{ color: "#9CAEAA" }}>
         Score: <span className="font-bold" style={{ color: "#F2A93B" }}>{score}</span>
       </p>
+
       {gameOver && (
-        <p className="text-sm font-semibold mb-2" style={{ color: "#EF6461" }}>
-          Game Over! Refresh to play again.
-        </p>
+        <div
+          className="mb-2 px-4 py-2 rounded-xl font-bold text-center"
+          style={{ backgroundColor: "#EF6461", color: "#12201F" }}
+        >
+          Game Over! Final score: {score}
+        </div>
       )}
+
       <canvas
         ref={canvasRef}
         width={GRID_SIZE * CELL_SIZE}
@@ -102,9 +115,20 @@ function Snake() {
         className="rounded-xl border-2 mt-2"
         style={{ borderColor: "#3A4E4B" }}
       />
-      <p className="text-xs mt-3" style={{ color: "#9CAEAA" }}>
-        Use arrow keys to move
-      </p>
+
+      {gameOver ? (
+        <button
+          onClick={handlePlayAgain}
+          className="mt-4 px-6 py-2.5 rounded-xl font-bold transition hover:-translate-y-0.5"
+          style={{ backgroundColor: "#F2A93B", color: "#12201F" }}
+        >
+          Play Again
+        </button>
+      ) : (
+        <p className="text-xs mt-3" style={{ color: "#9CAEAA" }}>
+          Use arrow keys to move
+        </p>
+      )}
     </div>
   );
 }
