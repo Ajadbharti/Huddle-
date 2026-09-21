@@ -1,0 +1,162 @@
+# 🎯 Huddle
+
+**Huddle** is an all-in-one social platform — chat, watch videos together, play games, and make voice/video calls, all in one place. Built as a learning project from scratch (backend + frontend), step by step.
+
+---
+
+## ✨ Features
+
+- **Landing Page** — marketing-style intro page for new visitors
+- **Authentication** — signup/login with Firebase (email + password), each user gets a unique `@username` (Huddle ID)
+- **Dashboard** — central hub with cards for every feature
+- **Friends System** — connect with anyone using their Huddle ID (like adding on Instagram), view their profile and thoughts
+- **Personal Chat** — WhatsApp-style 1-on-1 messaging with:
+  - Text, images, videos, and documents
+  - Voice calls
+  - Video calls with screen share
+- **Group Rooms** — create a room and share the code with friends/family:
+  - Real-time Chat Room
+  - Watch Party (YouTube videos synced for everyone)
+  - Video/Voice Call with screen share
+- **Games** — playable solo (vs. computer / pass-and-play) or online with friends via a room code:
+  - Tic Tac Toe (with unbeatable minimax AI in solo mode)
+  - Snake
+  - Ludo (with a computer-controlled 3-player mode)
+- **Profile** — edit name, phone, profile picture, and post "Thoughts" (status updates) visible to friends
+- **Mobile Responsive** — works on phones and tablets
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React + Vite + Tailwind CSS |
+| Routing | React Router |
+| Backend | Node.js + Express |
+| Real-time | Socket.io |
+| Auth & Database | Firebase Authentication + Firestore |
+| File Storage | Firebase Storage |
+| Video/Voice Calls | Daily.co |
+| Video Embeds | react-youtube |
+
+---
+
+## 📁 Project Structure
+
+```
+huddle/
+├── server/                 # Backend (Node.js + Express + Socket.io)
+│   └── index.js
+│
+└── client/                 # Frontend (React + Vite)
+    └── src/
+        ├── pages/           # Landing, Login, Signup, Dashboard, Profile, People, DirectRoom, FeaturePage, AddFriend, UserProfile
+        ├── firebase.js       # Firebase config
+        ├── socket.js         # Socket.io client setup
+        ├── Chat.jsx
+        ├── VideoCall.jsx
+        ├── WatchParty.jsx
+        ├── TicTacToe.jsx
+        ├── Snake.jsx
+        └── Ludo.jsx
+```
+
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/YOUR_USERNAME/huddle.git
+cd huddle
+```
+
+### 2. Set up the backend
+
+```bash
+cd server
+npm install
+```
+
+Create a `.env` file (or edit directly in `index.js`) with your Daily.co API key:
+```
+DAILY_API_KEY=your_daily_api_key_here
+```
+
+Run the server:
+```bash
+node index.js
+```
+
+### 3. Set up the frontend
+
+```bash
+cd ../client
+npm install
+```
+
+Create `src/firebase.js` with your Firebase project config:
+```javascript
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+```
+
+Run the frontend:
+```bash
+npm run dev
+```
+
+Visit `http://localhost:5173`.
+
+---
+
+## 🔧 Firebase Setup Checklist
+
+- [ ] Create a Firebase project
+- [ ] Enable **Authentication** → Email/Password sign-in method
+- [ ] Enable **Firestore Database** (start in test mode for development)
+- [ ] Enable **Storage** (start in test mode for development)
+- [ ] Set Firestore rules to allow read/write during development:
+  ```
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /{document=**} {
+        allow read, write: if true;
+      }
+    }
+  }
+  ```
+  ⚠️ Tighten these rules before going to production.
+
+---
+
+## 📦 Deployment
+
+- **Frontend** → deploy the `client` folder to [Vercel](https://vercel.com)
+- **Backend** → deploy the `server` folder to [Render](https://render.com)
+- Update the Socket.io client URL in `client/src/socket.js` to point to your deployed backend URL once live.
+
+---
+
+## 📄 License
+
+This project was built for learning purposes.
