@@ -1,6 +1,10 @@
 # 🎯 Huddle
 
-**Huddle** is an all-in-one social platform — chat, watch videos together, play games, and make voice/video calls, all in one place. Built as a learning project from scratch (backend + frontend), step by step.
+**Huddle** is an all-in-one social platform — chat, watch videos together, play games, and make voice/video calls, all in one place.
+
+### 🌐 [**Click here to open the live app**](https://huddle-frontend-n9z2.onrender.com)
+
+> ⚠️ The backend is hosted on Render's free tier — if it's been inactive, the first request can take **up to 50 seconds** to wake up. Please be patient on first load.
 
 ---
 
@@ -39,6 +43,7 @@
 | File Storage | Firebase Storage |
 | Video/Voice Calls | Daily.co |
 | Video Embeds | react-youtube |
+| Hosting | Render (frontend + backend) |
 
 ---
 
@@ -64,13 +69,13 @@ huddle/
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Running Locally
 
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/huddle.git
-cd huddle
+git clone https://github.com/Ajadbharti/Huddle-.git
+cd Huddle-
 ```
 
 ### 2. Set up the backend
@@ -78,15 +83,6 @@ cd huddle
 ```bash
 cd server
 npm install
-```
-
-Create a `.env` file (or edit directly in `index.js`) with your Daily.co API key:
-```
-DAILY_API_KEY=your_daily_api_key_here
-```
-
-Run the server:
-```bash
 node index.js
 ```
 
@@ -97,29 +93,12 @@ cd ../client
 npm install
 ```
 
-Create `src/firebase.js` with your Firebase project config:
-```javascript
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
-};
-
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+Create a `.env` file inside `client/`:
+```
+VITE_SERVER_URL=http://localhost:3000
 ```
 
-Run the frontend:
+Run it:
 ```bash
 npm run dev
 ```
@@ -132,28 +111,9 @@ Visit `http://localhost:5173`.
 
 - [ ] Create a Firebase project
 - [ ] Enable **Authentication** → Email/Password sign-in method
-- [ ] Enable **Firestore Database** (start in test mode for development)
-- [ ] Enable **Storage** (start in test mode for development)
-- [ ] Set Firestore rules to allow read/write during development:
-  ```
-  rules_version = '2';
-  service cloud.firestore {
-    match /databases/{database}/documents {
-      match /{document=**} {
-        allow read, write: if true;
-      }
-    }
-  }
-  ```
-  ⚠️ Tighten these rules before going to production.
-
----
-
-## 📦 Deployment
-
-- **Frontend** → deploy the `client` folder to [Vercel](https://vercel.com)
-- **Backend** → deploy the `server` folder to [Render](https://render.com)
-- Update the Socket.io client URL in `client/src/socket.js` to point to your deployed backend URL once live.
+- [ ] Enable **Firestore Database**
+- [ ] Enable **Storage**
+- [ ] Add your Firebase config to `client/src/firebase.js`
 
 ---
 
