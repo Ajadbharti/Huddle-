@@ -11,20 +11,22 @@ const COLOR_HEX = {
 const START_POSITIONS = { red: 0, green: 13, yellow: 26, blue: 39 };
 const SAFE_POSITIONS = [0, 13, 26, 39];
 const HUMAN_COLOR = "red";
+const DICE_FACES = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
 
-const PATH_COORDS = [
+const RED_ARM = [
   [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [6, 5],
   [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6],
   [0, 7],
-  [0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8],
-  [6, 9], [6, 10], [6, 11], [6, 12], [6, 13], [6, 14],
-  [7, 14],
-  [8, 14], [8, 13], [8, 12], [8, 11], [8, 10], [8, 9],
-  [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8],
-  [14, 7],
-  [14, 6], [13, 6], [12, 6], [11, 6], [10, 6], [9, 6],
-  [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0],
-  [7, 0],
+];
+function rotate90(r, c) { return [c, 14 - r]; }
+function rotate180(r, c) { return [14 - r, 14 - c]; }
+function rotate270(r, c) { return [14 - c, r]; }
+
+const PATH_COORDS = [
+  ...RED_ARM,
+  ...RED_ARM.map(([r, c]) => rotate90(r, c)),
+  ...RED_ARM.map(([r, c]) => rotate180(r, c)),
+  ...RED_ARM.map(([r, c]) => rotate270(r, c)),
 ];
 
 const HOME_STRETCH = {
@@ -88,13 +90,18 @@ function simulateMove(players, color, tokenIndex, diceValue) {
   return { players: newPlayers, captured: false };
 }
 
+function canTokenMove(pos, diceValue) {
+  if (pos === -1) return diceValue === 6;
+  if (pos === 58) return false;
+  return true;
+}
+
 function pickComputerMove(players, color, diceValue) {
   const tokens = players[color].tokens;
   const validIndices = [];
 
   tokens.forEach((pos, idx) => {
-    if (pos === -1 && diceValue === 6) validIndices.push(idx);
-    else if (pos !== -1 && pos !== 58) validIndices.push(idx);
+    if (canTokenMove(pos, diceValue)) validIndices.push(idx);
   });
 
   if (validIndices.length === 0) return null;
@@ -158,13 +165,10 @@ function Ludo({ roomCode }) {
       if (!result) return prev;
 
       const tokens = result.players[color].tokens;
-      const allHome = tokens.every((pos) => pos === 58);
-      if (allHome) setLocalWinner(color);
+      if (tokens.every((pos) => pos === 58)) setLocalWinner(color);
 
       let newTurnIndex = prev.turnIndex;
-      if (diceValue !== 6) {
-        newTurnIndex = (prev.turnIndex + 1) % COLORS.length;
-      }
+      if (diceValue !== 6) newTurnIndex = (prev.turnIndex + 1) % COLORS.length;
 
       return { players: result.players, turnIndex: newTurnIndex, diceValue: null };
     });
@@ -175,24 +179,17 @@ function Ludo({ roomCode }) {
       const currentColor = COLORS[prev.turnIndex];
       const diceValue = Math.floor(Math.random() * 6) + 1;
       const tokens = prev.players[currentColor].tokens;
-      const hasTokenOutside = tokens.some((pos) => pos !== -1 && pos !== 58);
-      const canOpenNew = diceValue === 6 && tokens.includes(-1);
+      const anyMove = tokens.some((pos) => canTokenMove(pos, diceValue));
 
-      if (!hasTokenOutside && !canOpenNew) {
-        return {
-          ...prev,
-          diceValue: null,
-          turnIndex: (prev.turnIndex + 1) % COLORS.length,
-        };
+      if (!anyMove) {
+        return { ...prev, diceValue: null, turnIndex: (prev.turnIndex + 1) % COLORS.length };
       }
       return { ...prev, diceValue };
     });
   };
 
-  // ---- Computer ki turn: clean setTimeout chain, koi stale closure nahi ----
   useEffect(() => {
     if (isOnline || localWinner) return;
-
     const currentColor = COLORS[localState.turnIndex];
     if (currentColor === HUMAN_COLOR) return;
 
@@ -207,15 +204,10 @@ function Ludo({ roomCode }) {
 
         const diceValue = Math.floor(Math.random() * 6) + 1;
         const tokens = prev.players[currentColor].tokens;
-        const hasTokenOutside = tokens.some((pos) => pos !== -1 && pos !== 58);
-        const canOpenNew = diceValue === 6 && tokens.includes(-1);
+        const anyMove = tokens.some((pos) => canTokenMove(pos, diceValue));
 
-        if (!hasTokenOutside && !canOpenNew) {
-          return {
-            ...prev,
-            diceValue: null,
-            turnIndex: (prev.turnIndex + 1) % COLORS.length,
-          };
+        if (!anyMove) {
+          return { ...prev, diceValue: null, turnIndex: (prev.turnIndex + 1) % COLORS.length };
         }
 
         setTimeout(() => {
@@ -226,34 +218,24 @@ function Ludo({ roomCode }) {
             }
             const moveIdx = pickComputerMove(latest.players, currentColor, diceValue);
             if (moveIdx === null) {
-              return {
-                ...latest,
-                diceValue: null,
-                turnIndex: (latest.turnIndex + 1) % COLORS.length,
-              };
+              return { ...latest, diceValue: null, turnIndex: (latest.turnIndex + 1) % COLORS.length };
             }
             const result = simulateMove(latest.players, currentColor, moveIdx, diceValue);
             if (!result) {
-              return {
-                ...latest,
-                diceValue: null,
-                turnIndex: (latest.turnIndex + 1) % COLORS.length,
-              };
+              return { ...latest, diceValue: null, turnIndex: (latest.turnIndex + 1) % COLORS.length };
             }
-            const homeTokens = result.players[currentColor].tokens;
-            if (homeTokens.every((pos) => pos === 58)) {
+            if (result.players[currentColor].tokens.every((pos) => pos === 58)) {
               setLocalWinner(currentColor);
             }
-            const newTurnIndex =
-              diceValue === 6 ? latest.turnIndex : (latest.turnIndex + 1) % COLORS.length;
+            const newTurnIndex = diceValue === 6 ? latest.turnIndex : (latest.turnIndex + 1) % COLORS.length;
             return { players: result.players, turnIndex: newTurnIndex, diceValue: null };
           });
           setComputerThinking(false);
-        }, 700);
+        }, 650);
 
         return { ...prev, diceValue };
       });
-    }, 700);
+    }, 650);
 
     return () => {
       cancelled = true;
@@ -267,12 +249,18 @@ function Ludo({ roomCode }) {
     else handleLocalRollDice();
   };
 
-  const handleMoveToken = (tokenIndex) => {
+  const handleTokenClick = (color, tokenIndex) => {
+    const pos = gameState.players[color].tokens[tokenIndex];
+    if (gameState.diceValue === null) return;
+    if (color !== COLORS[gameState.turnIndex]) return;
+    if (!canTokenMove(pos, gameState.diceValue)) return;
+
     if (isOnline) {
+      if (myColor !== color) return;
       socket.emit("ludo-move-token", { roomCode, tokenIndex });
     } else {
-      if (gameState.diceValue === null) return;
-      applyLocalMove(HUMAN_COLOR, tokenIndex, gameState.diceValue);
+      if (color !== HUMAN_COLOR) return;
+      applyLocalMove(color, tokenIndex, gameState.diceValue);
     }
   };
 
@@ -292,10 +280,40 @@ function Ludo({ roomCode }) {
       if (coord) {
         const key = `${coord[0]}-${coord[1]}`;
         if (!cellMap[key]) cellMap[key] = [];
-        cellMap[key].push({ color, idx });
+        cellMap[key].push({ color, idx, pos });
       }
     });
   });
+
+  const canClickAnyToken =
+    !activeWinner &&
+    gameState.diceValue !== null &&
+    (isOnline ? myColor === currentTurnColor : currentTurnColor === HUMAN_COLOR);
+
+  const renderToken = (color, idx, pos, small) => {
+    const clickable = canClickAnyToken && color === currentTurnColor && canTokenMove(pos, gameState.diceValue);
+    return (
+      <button
+        key={`${color}-${idx}`}
+        onClick={() => handleTokenClick(color, idx)}
+        disabled={!clickable}
+        className="rounded-full flex items-center justify-center font-bold transition"
+        style={{
+          width: small ? "62%" : "70%",
+          aspectRatio: "1",
+          backgroundColor: COLOR_HEX[color],
+          border: clickable ? "2px solid #F5F1E8" : "2px solid rgba(0,0,0,0.3)",
+          color: "#12201F",
+          fontSize: "8px",
+          cursor: clickable ? "pointer" : "default",
+          boxShadow: clickable ? "0 0 6px rgba(242,169,59,0.9)" : "none",
+          transform: clickable ? "scale(1.1)" : "scale(1)",
+        }}
+      >
+        {idx + 1}
+      </button>
+    );
+  };
 
   return (
     <div className="flex flex-col items-center w-full">
@@ -303,7 +321,7 @@ function Ludo({ roomCode }) {
         Ludo
       </h3>
       {!isOnline && (
-        <p className="text-xs mb-3" style={{ color: "#9CAEAA" }}>
+        <p className="text-xs mb-2" style={{ color: "#9CAEAA" }}>
           You are <span style={{ color: COLOR_HEX.red }}>Red</span> — vs 3 computer players
           {computerThinking && <span> (computer playing...)</span>}
         </p>
@@ -311,7 +329,7 @@ function Ludo({ roomCode }) {
 
       {activeWinner && (
         <div
-          className="mb-4 px-4 py-2 rounded-xl font-bold"
+          className="mb-3 px-4 py-2 rounded-xl font-bold"
           style={{ backgroundColor: COLOR_HEX[activeWinner], color: "#12201F" }}
         >
           {!isOnline && activeWinner !== HUMAN_COLOR
@@ -327,16 +345,10 @@ function Ludo({ roomCode }) {
             <span className="font-bold" style={{ color: COLOR_HEX[myColor] }}>{myColor}</span>
           </div>
         )}
-        <div className="rounded-lg px-3 py-1.5 text-sm border-2" style={{ borderColor: "#3A4E4B" }}>
+        <div className="rounded-lg px-3 py-1.5 text-sm border-2 flex items-center gap-1" style={{ borderColor: COLOR_HEX[currentTurnColor] }}>
           <span style={{ color: "#9CAEAA" }}>Turn: </span>
-          <span className="font-bold" style={{ color: COLOR_HEX[currentTurnColor] }}>
+          <span className="font-bold capitalize" style={{ color: COLOR_HEX[currentTurnColor] }}>
             {currentTurnColor}
-          </span>
-        </div>
-        <div className="rounded-lg px-3 py-1.5 text-sm border-2" style={{ borderColor: "#3A4E4B" }}>
-          <span style={{ color: "#9CAEAA" }}>Dice: </span>
-          <span className="font-bold" style={{ color: "#F2A93B" }}>
-            {gameState.diceValue ?? "-"}
           </span>
         </div>
       </div>
@@ -344,11 +356,25 @@ function Ludo({ roomCode }) {
       {isMyTurn && gameState.diceValue === null && !activeWinner && (
         <button
           onClick={handleRollDice}
-          className="px-6 py-2.5 rounded-xl font-bold mb-4 transition hover:-translate-y-0.5"
+          className="px-6 py-2.5 rounded-xl font-bold mb-3 transition hover:-translate-y-0.5"
           style={{ backgroundColor: "#F2A93B", color: "#12201F" }}
         >
           🎲 Roll Dice
         </button>
+      )}
+
+      {gameState.diceValue !== null && !activeWinner && (
+        <div
+          className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2 border-2"
+          style={{ borderColor: "#3A4E4B" }}
+        >
+          <span className="text-3xl leading-none">{DICE_FACES[gameState.diceValue]}</span>
+          <span className="text-sm" style={{ color: "#9CAEAA" }}>
+            {isMyTurn || !isOnline
+              ? "Tap a highlighted token to move it"
+              : `${currentTurnColor} rolled ${gameState.diceValue}`}
+          </span>
+        </div>
       )}
 
       <div
@@ -357,11 +383,7 @@ function Ludo({ roomCode }) {
       >
         <div
           className="w-full h-full grid"
-          style={{
-            gridTemplateColumns: "repeat(15, 1fr)",
-            gridTemplateRows: "repeat(15, 1fr)",
-            gap: "1px",
-          }}
+          style={{ gridTemplateColumns: "repeat(15, 1fr)", gridTemplateRows: "repeat(15, 1fr)", gap: "1px" }}
         >
           {COLORS.map((color) => (
             <div
@@ -374,21 +396,16 @@ function Ludo({ roomCode }) {
               }}
               className="flex items-center justify-center"
             >
-              <div className="grid grid-cols-2 gap-1.5 p-2">
-                {gameState.players[color].tokens
-                  .map((pos, idx) => ({ pos, idx }))
-                  .filter((t) => t.pos === -1)
-                  .map((t) => (
-                    <span
-                      key={t.idx}
-                      className="rounded-full block"
-                      style={{
-                        width: "10px",
-                        height: "10px",
-                        backgroundColor: COLOR_HEX[color],
-                      }}
-                    />
-                  ))}
+              <div className="grid grid-cols-2 gap-2 p-2 w-full h-full max-w-[70%] max-h-[70%]">
+                {gameState.players[color].tokens.map((pos, idx) =>
+                  pos === -1 ? (
+                    <div key={idx} className="flex items-center justify-center">
+                      {renderToken(color, idx, pos, true)}
+                    </div>
+                  ) : (
+                    <div key={idx} />
+                  )
+                )}
               </div>
             </div>
           ))}
@@ -404,7 +421,7 @@ function Ludo({ roomCode }) {
                 opacity: 0.85,
               }}
             />
-            <div className="relative flex flex-wrap gap-0.5 justify-center max-w-[80%]">
+            <div className="relative flex flex-wrap gap-0.5 justify-center max-w-[85%]">
               {COLORS.map((color) =>
                 gameState.players[color].tokens
                   .map((pos, idx) => ({ pos, idx }))
@@ -413,12 +430,7 @@ function Ludo({ roomCode }) {
                     <span
                       key={`${color}-${t.idx}`}
                       className="rounded-full block border"
-                      style={{
-                        width: "6px",
-                        height: "6px",
-                        backgroundColor: COLOR_HEX[color],
-                        borderColor: "#12201F",
-                      }}
+                      style={{ width: "7px", height: "7px", backgroundColor: COLOR_HEX[color], borderColor: "#12201F" }}
                     />
                   ))
               )}
@@ -437,17 +449,19 @@ function Ludo({ roomCode }) {
                   backgroundColor: isStart ? "#243836" : "#1A2C2A",
                   border: isStart ? "1px solid #F2A93B" : "1px solid #2A3A38",
                 }}
-                className="flex items-center justify-center"
+                className="flex items-center justify-center relative"
               >
-                {tokensHere.length > 0 && (
+                {isStart && tokensHere.length === 0 && (
+                  <span className="text-[8px]" style={{ color: "#F2A93B" }}>★</span>
+                )}
+                {tokensHere.length > 0 && renderToken(tokensHere[0].color, tokensHere[0].idx, tokensHere[0].pos, false)}
+                {tokensHere.length > 1 && (
                   <span
-                    className="rounded-full block"
-                    style={{
-                      width: "55%",
-                      aspectRatio: "1",
-                      backgroundColor: COLOR_HEX[tokensHere[0].color],
-                    }}
-                  />
+                    className="absolute -top-1 -right-1 rounded-full text-white flex items-center justify-center"
+                    style={{ width: "10px", height: "10px", backgroundColor: "#EF6461", fontSize: "7px" }}
+                  >
+                    {tokensHere.length}
+                  </span>
                 )}
               </div>
             );
@@ -459,26 +473,10 @@ function Ludo({ roomCode }) {
               return (
                 <div
                   key={`${color}-stretch-${idx}`}
-                  style={{
-                    gridRow: row + 1,
-                    gridColumn: col + 1,
-                    backgroundColor: COLOR_HEX[color],
-                    opacity: 0.35,
-                  }}
+                  style={{ gridRow: row + 1, gridColumn: col + 1, backgroundColor: COLOR_HEX[color], opacity: tokensHere.length ? 1 : 0.35 }}
                   className="flex items-center justify-center"
                 >
-                  {tokensHere.length > 0 && (
-                    <span
-                      className="rounded-full block"
-                      style={{
-                        width: "55%",
-                        aspectRatio: "1",
-                        backgroundColor: COLOR_HEX[color],
-                        opacity: 1,
-                        border: "1px solid #12201F",
-                      }}
-                    />
-                  )}
+                  {tokensHere.length > 0 && renderToken(tokensHere[0].color, tokensHere[0].idx, tokensHere[0].pos, false)}
                 </div>
               );
             })
@@ -486,7 +484,7 @@ function Ludo({ roomCode }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 w-full mb-4">
+      <div className="grid grid-cols-4 gap-2 w-full">
         {COLORS.map((color) => {
           const homeCount = gameState.players[color].tokens.filter((p) => p === 58).length;
           return (
@@ -495,54 +493,12 @@ function Ludo({ roomCode }) {
               className="rounded-lg p-2 text-center border-2"
               style={{ borderColor: COLOR_HEX[color], backgroundColor: "#1A2C2A" }}
             >
-              <span className="text-xs" style={{ color: COLOR_HEX[color] }}>
-                {homeCount}/4 Home
+              <span className="text-xs capitalize" style={{ color: COLOR_HEX[color] }}>
+                {color}: {homeCount}/4
               </span>
             </div>
           );
         })}
-      </div>
-
-      <div className="w-full space-y-3">
-        {(isOnline ? COLORS : [HUMAN_COLOR]).map((color) => (
-          <div
-            key={color}
-            className="flex items-center gap-2 rounded-xl px-3 py-2 border-2"
-            style={{ backgroundColor: "#1A2C2A", borderColor: "#3A4E4B" }}
-          >
-            <span
-              className="text-sm font-bold w-16 capitalize"
-              style={{ color: COLOR_HEX[color] }}
-            >
-              {color}
-            </span>
-            <div className="flex gap-1.5 flex-1 flex-wrap">
-              {gameState.players[color].tokens.map((pos, index) => {
-                const isThisColorsTurn = color === currentTurnColor;
-                const disabled =
-                  activeWinner ||
-                  !isThisColorsTurn ||
-                  (isOnline && myColor !== color) ||
-                  gameState.diceValue === null;
-                return (
-                  <button
-                    key={index}
-                    disabled={disabled}
-                    onClick={() => handleMoveToken(index)}
-                    className="text-xs px-2 py-1.5 rounded-lg border-2 transition"
-                    style={
-                      disabled
-                        ? { backgroundColor: "#1A2C2A", borderColor: "#243836", color: "#5A6E6B", cursor: "not-allowed" }
-                        : { backgroundColor: "#1A2C2A", borderColor: "#3A4E4B", color: "#F5F1E8", cursor: "pointer" }
-                    }
-                  >
-                    T{index + 1}: {pos === -1 ? "Yard" : pos === 58 ? "Home" : pos}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );
