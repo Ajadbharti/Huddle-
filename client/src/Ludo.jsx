@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import socket from "./socket";
 
 const COLORS = ["red", "green", "yellow", "blue"];
@@ -11,6 +11,41 @@ const COLOR_HEX = {
 const START_POSITIONS = { red: 0, green: 13, yellow: 26, blue: 39 };
 const SAFE_POSITIONS = [0, 13, 26, 39];
 const HUMAN_COLOR = "red";
+
+const PATH_COORDS = [
+  [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [6, 5],
+  [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6],
+  [0, 7],
+  [0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8],
+  [6, 9], [6, 10], [6, 11], [6, 12], [6, 13], [6, 14],
+  [7, 14],
+  [8, 14], [8, 13], [8, 12], [8, 11], [8, 10], [8, 9],
+  [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8],
+  [14, 7],
+  [14, 6], [13, 6], [12, 6], [11, 6], [10, 6], [9, 6],
+  [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0],
+  [7, 0],
+];
+
+const HOME_STRETCH = {
+  red: [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]],
+  green: [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7]],
+  yellow: [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8]],
+  blue: [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7], [8, 7]],
+};
+
+const YARD_GRID = {
+  red: { gridRow: "1 / 7", gridColumn: "1 / 7" },
+  green: { gridRow: "1 / 7", gridColumn: "10 / 16" },
+  yellow: { gridRow: "10 / 16", gridColumn: "10 / 16" },
+  blue: { gridRow: "10 / 16", gridColumn: "1 / 7" },
+};
+
+function getCellCoord(color, pos) {
+  if (pos === -1 || pos === 58) return null;
+  if (pos < 52) return PATH_COORDS[pos];
+  return HOME_STRETCH[color][pos - 52];
+}
 
 function createLocalState() {
   const players = {};
@@ -91,7 +126,6 @@ function Ludo({ roomCode }) {
   const [localState, setLocalState] = useState(createLocalState());
   const [localWinner, setLocalWinner] = useState(null);
   const [computerThinking, setComputerThinking] = useState(false);
-  const busyRef = useRef(false);
 
   useEffect(() => {
     if (!isOnline) return;
@@ -144,36 +178,37 @@ function Ludo({ roomCode }) {
       const hasTokenOutside = tokens.some((pos) => pos !== -1 && pos !== 58);
       const canOpenNew = diceValue === 6 && tokens.includes(-1);
 
-      let newTurnIndex = prev.turnIndex;
-      let newDice = diceValue;
-
       if (!hasTokenOutside && !canOpenNew) {
-        newTurnIndex = (prev.turnIndex + 1) % COLORS.length;
-        newDice = null;
+        return {
+          ...prev,
+          diceValue: null,
+          turnIndex: (prev.turnIndex + 1) % COLORS.length,
+        };
       }
-
-      return { ...prev, diceValue: newDice, turnIndex: newTurnIndex };
+      return { ...prev, diceValue };
     });
   };
 
+  // ---- Computer ki turn: clean setTimeout chain, koi stale closure nahi ----
   useEffect(() => {
     if (isOnline || localWinner) return;
+
     const currentColor = COLORS[localState.turnIndex];
     if (currentColor === HUMAN_COLOR) return;
-    if (busyRef.current) return;
 
-    busyRef.current = true;
+    let cancelled = false;
     setComputerThinking(true);
 
-    const runComputerTurn = async () => {
-      await new Promise((r) => setTimeout(r, 600));
+    const rollTimer = setTimeout(() => {
+      if (cancelled) return;
 
-      let diceValue, tokens, hasTokenOutside, canOpenNew;
       setLocalState((prev) => {
-        diceValue = Math.floor(Math.random() * 6) + 1;
-        tokens = prev.players[currentColor].tokens;
-        hasTokenOutside = tokens.some((pos) => pos !== -1 && pos !== 58);
-        canOpenNew = diceValue === 6 && tokens.includes(-1);
+        if (COLORS[prev.turnIndex] !== currentColor) return prev;
+
+        const diceValue = Math.floor(Math.random() * 6) + 1;
+        const tokens = prev.players[currentColor].tokens;
+        const hasTokenOutside = tokens.some((pos) => pos !== -1 && pos !== 58);
+        const canOpenNew = diceValue === 6 && tokens.includes(-1);
 
         if (!hasTokenOutside && !canOpenNew) {
           return {
@@ -182,45 +217,50 @@ function Ludo({ roomCode }) {
             turnIndex: (prev.turnIndex + 1) % COLORS.length,
           };
         }
+
+        setTimeout(() => {
+          if (cancelled) return;
+          setLocalState((latest) => {
+            if (COLORS[latest.turnIndex] !== currentColor || latest.diceValue !== diceValue) {
+              return latest;
+            }
+            const moveIdx = pickComputerMove(latest.players, currentColor, diceValue);
+            if (moveIdx === null) {
+              return {
+                ...latest,
+                diceValue: null,
+                turnIndex: (latest.turnIndex + 1) % COLORS.length,
+              };
+            }
+            const result = simulateMove(latest.players, currentColor, moveIdx, diceValue);
+            if (!result) {
+              return {
+                ...latest,
+                diceValue: null,
+                turnIndex: (latest.turnIndex + 1) % COLORS.length,
+              };
+            }
+            const homeTokens = result.players[currentColor].tokens;
+            if (homeTokens.every((pos) => pos === 58)) {
+              setLocalWinner(currentColor);
+            }
+            const newTurnIndex =
+              diceValue === 6 ? latest.turnIndex : (latest.turnIndex + 1) % COLORS.length;
+            return { players: result.players, turnIndex: newTurnIndex, diceValue: null };
+          });
+          setComputerThinking(false);
+        }, 700);
+
         return { ...prev, diceValue };
       });
+    }, 700);
 
-      await new Promise((r) => setTimeout(r, 600));
-
-      if (hasTokenOutside || canOpenNew) {
-        setLocalState((prev) => {
-          const moveIdx = pickComputerMove(prev.players, currentColor, diceValue);
-          if (moveIdx === null) {
-            return {
-              ...prev,
-              diceValue: null,
-              turnIndex: (prev.turnIndex + 1) % COLORS.length,
-            };
-          }
-          const result = simulateMove(prev.players, currentColor, moveIdx, diceValue);
-          if (!result) {
-            return {
-              ...prev,
-              diceValue: null,
-              turnIndex: (prev.turnIndex + 1) % COLORS.length,
-            };
-          }
-          const homeTokens = result.players[currentColor].tokens;
-          if (homeTokens.every((pos) => pos === 58)) {
-            setLocalWinner(currentColor);
-          }
-          const newTurnIndex =
-            diceValue === 6 ? prev.turnIndex : (prev.turnIndex + 1) % COLORS.length;
-          return { players: result.players, turnIndex: newTurnIndex, diceValue: null };
-        });
-      }
-
+    return () => {
+      cancelled = true;
+      clearTimeout(rollTimer);
       setComputerThinking(false);
-      busyRef.current = false;
     };
-
-    runComputerTurn();
-  }, [localState.turnIndex, localState.diceValue, isOnline, localWinner]);
+  }, [localState.turnIndex, isOnline, localWinner]);
 
   const handleRollDice = () => {
     if (isOnline) socket.emit("ludo-roll-dice", { roomCode });
@@ -245,15 +285,17 @@ function Ludo({ roomCode }) {
   const isMyTurn = isOnline ? myColor === currentTurnColor : currentTurnColor === HUMAN_COLOR;
   const activeWinner = isOnline ? winner : localWinner;
 
-  const tokensAtPosition = (pos) => {
-    const found = [];
-    COLORS.forEach((color) => {
-      gameState.players[color].tokens.forEach((tokenPos, idx) => {
-        if (tokenPos === pos) found.push({ color, idx });
-      });
+  const cellMap = {};
+  COLORS.forEach((color) => {
+    gameState.players[color].tokens.forEach((pos, idx) => {
+      const coord = getCellCoord(color, pos);
+      if (coord) {
+        const key = `${coord[0]}-${coord[1]}`;
+        if (!cellMap[key]) cellMap[key] = [];
+        cellMap[key].push({ color, idx });
+      }
     });
-    return found;
-  };
+  });
 
   return (
     <div className="flex flex-col items-center w-full">
@@ -310,77 +352,155 @@ function Ludo({ roomCode }) {
       )}
 
       <div
-        className="w-full rounded-2xl p-4 border-2 mb-4"
+        className="w-full max-w-md aspect-square rounded-2xl border-2 p-1.5 mb-4"
         style={{ backgroundColor: "#0D1615", borderColor: "#3A4E4B" }}
       >
-        <div className="grid grid-cols-4 gap-2 mb-3">
+        <div
+          className="w-full h-full grid"
+          style={{
+            gridTemplateColumns: "repeat(15, 1fr)",
+            gridTemplateRows: "repeat(15, 1fr)",
+            gap: "1px",
+          }}
+        >
           {COLORS.map((color) => (
             <div
               key={color}
-              className="rounded-lg p-2 flex flex-wrap gap-1 justify-center min-h-[44px] items-center border-2"
-              style={{ borderColor: COLOR_HEX[color], backgroundColor: "#12201F" }}
+              style={{
+                ...YARD_GRID[color],
+                backgroundColor: "#12201F",
+                border: `2px solid ${COLOR_HEX[color]}`,
+                borderRadius: "8px",
+              }}
+              className="flex items-center justify-center"
             >
-              {gameState.players[color].tokens
-                .map((pos, idx) => ({ pos, idx }))
-                .filter((t) => t.pos === -1)
-                .map((t) => (
-                  <span
-                    key={t.idx}
-                    className="w-4 h-4 rounded-full inline-block"
-                    style={{ backgroundColor: COLOR_HEX[color] }}
-                  />
-                ))}
+              <div className="grid grid-cols-2 gap-1.5 p-2">
+                {gameState.players[color].tokens
+                  .map((pos, idx) => ({ pos, idx }))
+                  .filter((t) => t.pos === -1)
+                  .map((t) => (
+                    <span
+                      key={t.idx}
+                      className="rounded-full block"
+                      style={{
+                        width: "10px",
+                        height: "10px",
+                        backgroundColor: COLOR_HEX[color],
+                      }}
+                    />
+                  ))}
+              </div>
             </div>
           ))}
-        </div>
-        <p className="text-[10px] text-center mb-3" style={{ color: "#9CAEAA" }}>
-          ↑ Yards (tokens waiting to start — roll a 6 to release)
-        </p>
 
-        <div className="flex flex-wrap gap-1 justify-center">
-          {Array.from({ length: 52 }).map((_, pos) => {
-            const tokensHere = tokensAtPosition(pos);
-            const isStart = SAFE_POSITIONS.includes(pos);
+          <div
+            style={{ gridRow: "7 / 10", gridColumn: "7 / 10", backgroundColor: "#1A2C2A" }}
+            className="flex items-center justify-center relative overflow-hidden rounded"
+          >
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `conic-gradient(${COLOR_HEX.red} 0% 25%, ${COLOR_HEX.green} 25% 50%, ${COLOR_HEX.yellow} 50% 75%, ${COLOR_HEX.blue} 75% 100%)`,
+                opacity: 0.85,
+              }}
+            />
+            <div className="relative flex flex-wrap gap-0.5 justify-center max-w-[80%]">
+              {COLORS.map((color) =>
+                gameState.players[color].tokens
+                  .map((pos, idx) => ({ pos, idx }))
+                  .filter((t) => t.pos === 58)
+                  .map((t) => (
+                    <span
+                      key={`${color}-${t.idx}`}
+                      className="rounded-full block border"
+                      style={{
+                        width: "6px",
+                        height: "6px",
+                        backgroundColor: COLOR_HEX[color],
+                        borderColor: "#12201F",
+                      }}
+                    />
+                  ))
+              )}
+            </div>
+          </div>
+
+          {PATH_COORDS.map(([row, col], idx) => {
+            const isStart = SAFE_POSITIONS.includes(idx);
+            const tokensHere = cellMap[`${row}-${col}`] || [];
             return (
               <div
-                key={pos}
-                className="w-6 h-6 rounded flex items-center justify-center relative"
+                key={`path-${idx}`}
                 style={{
+                  gridRow: row + 1,
+                  gridColumn: col + 1,
                   backgroundColor: isStart ? "#243836" : "#1A2C2A",
                   border: isStart ? "1px solid #F2A93B" : "1px solid #2A3A38",
                 }}
-                title={`Position ${pos}`}
+                className="flex items-center justify-center"
               >
                 {tokensHere.length > 0 && (
                   <span
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: COLOR_HEX[tokensHere[0].color] }}
+                    className="rounded-full block"
+                    style={{
+                      width: "55%",
+                      aspectRatio: "1",
+                      backgroundColor: COLOR_HEX[tokensHere[0].color],
+                    }}
                   />
                 )}
               </div>
             );
           })}
-        </div>
-        <p className="text-[10px] text-center mt-2" style={{ color: "#9CAEAA" }}>
-          Shared path (52 squares) — amber-outlined squares are safe start points
-        </p>
 
-        <div className="grid grid-cols-4 gap-2 mt-3">
-          {COLORS.map((color) => {
-            const homeCount = gameState.players[color].tokens.filter((p) => p === 58).length;
-            return (
-              <div
-                key={color}
-                className="rounded-lg p-2 text-center border-2"
-                style={{ borderColor: COLOR_HEX[color], backgroundColor: "#12201F" }}
-              >
-                <span className="text-xs" style={{ color: COLOR_HEX[color] }}>
-                  {homeCount}/4 Home
-                </span>
-              </div>
-            );
-          })}
+          {COLORS.map((color) =>
+            HOME_STRETCH[color].map(([row, col], idx) => {
+              const tokensHere = cellMap[`${row}-${col}`] || [];
+              return (
+                <div
+                  key={`${color}-stretch-${idx}`}
+                  style={{
+                    gridRow: row + 1,
+                    gridColumn: col + 1,
+                    backgroundColor: COLOR_HEX[color],
+                    opacity: 0.35,
+                  }}
+                  className="flex items-center justify-center"
+                >
+                  {tokensHere.length > 0 && (
+                    <span
+                      className="rounded-full block"
+                      style={{
+                        width: "55%",
+                        aspectRatio: "1",
+                        backgroundColor: COLOR_HEX[color],
+                        opacity: 1,
+                        border: "1px solid #12201F",
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 w-full mb-4">
+        {COLORS.map((color) => {
+          const homeCount = gameState.players[color].tokens.filter((p) => p === 58).length;
+          return (
+            <div
+              key={color}
+              className="rounded-lg p-2 text-center border-2"
+              style={{ borderColor: COLOR_HEX[color], backgroundColor: "#1A2C2A" }}
+            >
+              <span className="text-xs" style={{ color: COLOR_HEX[color] }}>
+                {homeCount}/4 Home
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <div className="w-full space-y-3">
