@@ -127,7 +127,8 @@ function Ludo({ roomCode }) {
 
   const [myColor, setMyColor] = useState(null);
   const [onlineState, setOnlineState] = useState(null);
-  const [full, setFull] = useState(false);
+  const [takenColors, setTakenColors] = useState([]);
+  const [colorError, setColorError] = useState("");
   const [winner, setWinner] = useState(null);
 
   const [localState, setLocalState] = useState(createLocalState());
@@ -137,25 +138,38 @@ function Ludo({ roomCode }) {
   useEffect(() => {
     if (!isOnline) return;
 
-    const handleYourColor = (color) => setMyColor(color);
+    const handleRoomInfo = ({ takenColors }) => setTakenColors(takenColors);
+    const handleYourColor = (color) => {
+      setMyColor(color);
+      setColorError("");
+    };
+    const handleColorTaken = ({ color }) => {
+      setColorError(`${color} was just taken — pick another`);
+      socket.emit("ludo-check-room", { roomCode });
+    };
     const handleState = (state) => setOnlineState(state);
-    const handleFull = () => setFull(true);
     const handleWinner = (color) => setWinner(color);
 
+    socket.on("ludo-room-info", handleRoomInfo);
     socket.on("ludo-your-color", handleYourColor);
+    socket.on("ludo-color-taken", handleColorTaken);
     socket.on("ludo-state", handleState);
-    socket.on("ludo-full", handleFull);
     socket.on("ludo-winner", handleWinner);
 
-    socket.emit("ludo-join", { roomCode });
+    socket.emit("ludo-check-room", { roomCode });
 
     return () => {
+      socket.off("ludo-room-info", handleRoomInfo);
       socket.off("ludo-your-color", handleYourColor);
+      socket.off("ludo-color-taken", handleColorTaken);
       socket.off("ludo-state", handleState);
-      socket.off("ludo-full", handleFull);
       socket.off("ludo-winner", handleWinner);
     };
   }, [roomCode, isOnline]);
+
+  const handleChooseColor = (color) => {
+    socket.emit("ludo-join", { roomCode, color });
+  };
 
   const gameState = isOnline ? onlineState : localState;
 
@@ -264,10 +278,48 @@ function Ludo({ roomCode }) {
     }
   };
 
-  if (isOnline && full)
-    return <p className="text-center" style={{ color: "#9CAEAA" }}>Ludo room is full (max 4 players)</p>;
+  if (isOnline && !myColor) {
+    return (
+      <div className="flex flex-col items-center py-8">
+        <h3 className="font-display text-lg font-bold mb-2" style={{ color: "#F5F1E8" }}>
+          Choose Your Color
+        </h3>
+        <p className="text-sm mb-6 text-center" style={{ color: "#9CAEAA" }}>
+          Share the room code with up to 3 friends — everyone picks a different color
+        </p>
+        {colorError && (
+          <p className="text-sm mb-4" style={{ color: "#EF6461" }}>{colorError}</p>
+        )}
+        <div className="grid grid-cols-2 gap-4">
+          {COLORS.map((color) => {
+            const taken = takenColors.includes(color);
+            return (
+              <button
+                key={color}
+                onClick={() => !taken && handleChooseColor(color)}
+                disabled={taken}
+                className="w-28 h-28 rounded-2xl flex flex-col items-center justify-center gap-2 border-2 font-bold capitalize transition"
+                style={{
+                  backgroundColor: taken ? "#1A2C2A" : COLOR_HEX[color],
+                  borderColor: COLOR_HEX[color],
+                  color: taken ? "#5A6E6B" : "#12201F",
+                  opacity: taken ? 0.5 : 1,
+                  cursor: taken ? "not-allowed" : "pointer",
+                }}
+              >
+                <span className="text-2xl">🎲</span>
+                {color}
+                {taken && <span className="text-xs">Taken</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   if (isOnline && !gameState)
-    return <p className="text-center" style={{ color: "#9CAEAA" }}>Joining Ludo...</p>;
+    return <p className="text-center" style={{ color: "#9CAEAA" }}>Loading game...</p>;
 
   const currentTurnColor = COLORS[gameState.turnIndex];
   const isMyTurn = isOnline ? myColor === currentTurnColor : currentTurnColor === HUMAN_COLOR;
@@ -290,7 +342,7 @@ function Ludo({ roomCode }) {
     gameState.diceValue !== null &&
     (isOnline ? myColor === currentTurnColor : currentTurnColor === HUMAN_COLOR);
 
-  const renderToken = (color, idx, pos, small) => {
+  const renderToken = (color, idx, pos) => {
     const clickable = canClickAnyToken && color === currentTurnColor && canTokenMove(pos, gameState.diceValue);
     return (
       <button
@@ -299,7 +351,7 @@ function Ludo({ roomCode }) {
         disabled={!clickable}
         className="rounded-full flex items-center justify-center font-bold transition"
         style={{
-          width: small ? "62%" : "70%",
+          width: "70%",
           aspectRatio: "1",
           backgroundColor: COLOR_HEX[color],
           border: clickable ? "2px solid #F5F1E8" : "2px solid rgba(0,0,0,0.3)",
@@ -342,7 +394,7 @@ function Ludo({ roomCode }) {
         {isOnline && (
           <div className="rounded-lg px-3 py-1.5 text-sm border-2" style={{ borderColor: "#3A4E4B" }}>
             <span style={{ color: "#9CAEAA" }}>You are: </span>
-            <span className="font-bold" style={{ color: COLOR_HEX[myColor] }}>{myColor}</span>
+            <span className="font-bold capitalize" style={{ color: COLOR_HEX[myColor] }}>{myColor}</span>
           </div>
         )}
         <div className="rounded-lg px-3 py-1.5 text-sm border-2 flex items-center gap-1" style={{ borderColor: COLOR_HEX[currentTurnColor] }}>
@@ -400,7 +452,7 @@ function Ludo({ roomCode }) {
                 {gameState.players[color].tokens.map((pos, idx) =>
                   pos === -1 ? (
                     <div key={idx} className="flex items-center justify-center">
-                      {renderToken(color, idx, pos, true)}
+                      {renderToken(color, idx, pos)}
                     </div>
                   ) : (
                     <div key={idx} />
@@ -454,7 +506,7 @@ function Ludo({ roomCode }) {
                 {isStart && tokensHere.length === 0 && (
                   <span className="text-[8px]" style={{ color: "#F2A93B" }}>★</span>
                 )}
-                {tokensHere.length > 0 && renderToken(tokensHere[0].color, tokensHere[0].idx, tokensHere[0].pos, false)}
+                {tokensHere.length > 0 && renderToken(tokensHere[0].color, tokensHere[0].idx, tokensHere[0].pos)}
                 {tokensHere.length > 1 && (
                   <span
                     className="absolute -top-1 -right-1 rounded-full text-white flex items-center justify-center"
@@ -476,7 +528,7 @@ function Ludo({ roomCode }) {
                   style={{ gridRow: row + 1, gridColumn: col + 1, backgroundColor: COLOR_HEX[color], opacity: tokensHere.length ? 1 : 0.35 }}
                   className="flex items-center justify-center"
                 >
-                  {tokensHere.length > 0 && renderToken(tokensHere[0].color, tokensHere[0].idx, tokensHere[0].pos, false)}
+                  {tokensHere.length > 0 && renderToken(tokensHere[0].color, tokensHere[0].idx, tokensHere[0].pos)}
                 </div>
               );
             })

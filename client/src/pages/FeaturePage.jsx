@@ -8,7 +8,7 @@ import TicTacToe from "../TicTacToe";
 import Snake from "../Snake";
 import Ludo from "../Ludo";
 
-const soloGames = ["snake", "tictactoe", "ludo"];
+const soloGames = ["snake", "tictactoe"];
 
 function FeaturePage() {
   const { featureId } = useParams();
@@ -39,6 +39,11 @@ function FeaturePage() {
 
   const handleCreateRoom = () => socket.emit("create-room");
   const handleJoinRoom = () => socket.emit("join-room", joinInput.toUpperCase());
+
+  const handlePlayVsComputer = () => {
+    setRoomCode("");
+    setInRoom(true);
+  };
 
   const featureNames = {
     chat: "Chat Room",
@@ -82,6 +87,23 @@ function FeaturePage() {
           >
             {featureNames[featureId] || featureId}
           </h2>
+
+          {featureId === "ludo" && (
+            <>
+              <button
+                onClick={handlePlayVsComputer}
+                className="w-full font-display font-bold py-3 rounded-xl mb-3 border-2 transition hover:-translate-y-0.5"
+                style={{ borderColor: "#6FA98F", color: "#6FA98F" }}
+              >
+                🤖 Play vs Computer
+              </button>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-px flex-1" style={{ backgroundColor: "#3A4E4B" }} />
+                <span className="text-xs" style={{ color: "#9CAEAA" }}>OR PLAY WITH FRIENDS</span>
+                <div className="h-px flex-1" style={{ backgroundColor: "#3A4E4B" }} />
+              </div>
+            </>
+          )}
 
           <button
             onClick={handleCreateRoom}
